@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
+const http = require('http'); // Render Port Fix
 
 // Setup Puppeteer with Stealth to avoid bot detection
 const puppeteer = require('puppeteer-extra');
@@ -41,26 +42,20 @@ client.on('messageCreate', async (message) => {
 
         let browser;
         try {
-            // Launch browser (headless: false means you can see the browser on your PC, set to true to hide it)
             browser = await puppeteer.launch({ 
                 headless: true, 
-                args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
             });
             const page = await browser.newPage();
 
-            // Go to the website
             await page.goto('https://globaluidbypass.site/portal/9789a74edee9cb55', { 
                 waitUntil: 'networkidle2', 
                 timeout: 60000 
             });
 
-            // 1. Find the input field and type the UID
-            // We use the placeholder text from your screenshot to find the box
             await page.waitForSelector('input[placeholder="Enter numeric Game UID..."]', { timeout: 10000 });
             await page.type('input[placeholder="Enter numeric Game UID..."]', uid);
 
-            // 2. Find the "ACTIVATE FREE ACCESS" button and click it
-            // We look for all buttons and click the one containing the text
             const buttons = await page.$$('button');
             let clicked = false;
             for (const btn of buttons) {
@@ -76,13 +71,9 @@ client.on('messageCreate', async (message) => {
                 throw new Error("Could not find the 'ACTIVATE FREE ACCESS' button.");
             }
 
-            // 3. Wait for the website to process the request (Wait 8 seconds)
             await new Promise(r => setTimeout(r, 8000));
 
-            // Optional: Take a screenshot to prove it worked
-            // await page.screenshot({ path: `result_${uid}.png` });
-
-            await statusMsg.edit(`✅ **Success!** I have submitted the UID \`${uid}\` to the website. Please check the website or your game to see if it worked.`);
+            await statusMsg.edit(`✅ **Success!** I have submitted the UID \`${uid}\` to the website for **2 Days (48 Hours)**. Please check the website or your game to see if it worked.`);
 
         } catch (error) {
             console.error(error);
@@ -96,3 +87,12 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+// --- HTTP SERVER FOR RENDER + UPTIMEROBOT ---
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is alive and running 24/7!');
+}).listen(PORT, '0.0.0.0', () => {
+    console.log(`Web server listening on port ${PORT}`);
+});
