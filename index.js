@@ -1,28 +1,7 @@
-const http = require('http'); // Render Port Fix (Top of file)
-
-// --- HTTP SERVER FOR RENDER + UPTIMEROBOT (Start instantly) ---
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is alive and running 24/7!');
-}).listen(PORT, '0.0.0.0', () => {
-    console.log(`Web server listening on port ${PORT}`);
-});
-
 require('dotenv').config();
-const { 
-    Client, 
-    GatewayIntentBits, 
-    EmbedBuilder, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
-    InteractionType 
-} = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 
+// Setup Puppeteer with Stealth to avoid bot detection
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
@@ -31,85 +10,57 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent // REQUIRED to read message commands
     ]
 });
 
+// Your specific channel ID
 const ALLOWED_CHANNEL_ID = '1567892746717626438';
 
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-    console.log(`Listening in channel: ${ALLOWED_CHANNEL_ID}`);
+    console.log(`Listening for !free commands in channel: ${ALLOWED_CHANNEL_ID}`);
 });
 
 client.on('messageCreate', async (message) => {
+    // Ignore bots and other channels
     if (message.author.bot) return;
     if (message.channel.id !== ALLOWED_CHANNEL_ID) return;
 
-    if (message.content === '!free') {
-        const embed = new EmbedBuilder()
-            .setTitle('⚡ MXA FREE UID BYPASS')
-            .setDescription('Enter your Game UID below to activate your free **2-day** proxy bypass access.')
-            .setColor('#9b5de5')
-            .setFooter({ text: 'Powered by MXA Free UID Bypass' })
-            .setTimestamp();
+    // Check for command !free <uid>
+    if (message.content.startsWith('!free ')) {
+        const args = message.content.split(' ');
+        const uid = args[1];
 
-        const button = new ButtonBuilder()
-            .setCustomId('open_uid_modal')
-            .setLabel('ACTIVATE FREE ACCESS')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('💎');
-
-        const row = new ActionRowBuilder().addComponents(button);
-        return message.reply({ embeds: [embed], components: [row] });
-    }
-});
-
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton() && interaction.customId === 'open_uid_modal') {
-        const modal = new ModalBuilder()
-            .setCustomId('uid_modal')
-            .setTitle('Enter Game UID');
-
-        const uidInput = new TextInputBuilder()
-            .setCustomId('uid_input')
-            .setLabel('GAME UID NUMBER')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Enter numeric Game UID (8-12 digits)...')
-            .setMinLength(8)
-            .setMaxLength(12)
-            .setRequired(true);
-
-        const actionRow = new ActionRowBuilder().addComponents(uidInput);
-        modal.addComponents(actionRow);
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'uid_modal') {
-        const uid = interaction.fields.getTextInputValue('uid_input');
-
-        if (!/^\d{8,12}$/.test(uid)) {
-            return interaction.reply({ content: '❌ **Invalid UID.** Please provide a numeric UID between 8 and 12 digits.', ephemeral: true });
+        // Validate UID (must be 8-12 digits)
+        if (!uid || !/^\d{8,12}$/.test(uid)) {
+            return message.reply('❌ **Invalid UID.** Please provide a numeric UID between 8 and 12 digits. Example: `!free 621345641`');
         }
 
-        await interaction.reply({ content: `⏳ **Processing...** Attempting to activate free trial for UID: \`${uid}\`. Please wait...`, ephemeral: true });
+        const statusMsg = await message.reply(`⏳ **Processing...** Attempting to activate free trial for UID: \`${uid}\`. Please wait...`);
 
         let browser;
         try {
+            // Launch browser (headless: false means you can see the browser on your PC, set to true to hide it)
             browser = await puppeteer.launch({ 
                 headless: true, 
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+                args: ['--no-sandbox', '--disable-setuid-sandbox'] 
             });
             const page = await browser.newPage();
 
+            // Go to the website
             await page.goto('https://globaluidbypass.site/portal/9789a74edee9cb55', { 
                 waitUntil: 'networkidle2', 
                 timeout: 60000 
             });
 
-            await page.waitForSelector('input[placeholder="Enter numeric Game UID..."]', { timeout: 15000 });
+            // 1. Find the input field and type the UID
+            // We use the placeholder text from your screenshot to find the box
+            await page.waitForSelector('input[placeholder="Enter numeric Game UID..."]', { timeout: 10000 });
             await page.type('input[placeholder="Enter numeric Game UID..."]', uid);
 
+            // 2. Find the "ACTIVATE FREE ACCESS" button and click it
+            // We look for all buttons and click the one containing the text
             const buttons = await page.$$('button');
             let clicked = false;
             for (const btn of buttons) {
@@ -121,26 +72,25 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            if (!clicked) throw new Error("Button not found");
+            if (!clicked) {
+                throw new Error("Could not find the 'ACTIVATE FREE ACCESS' button.");
+            }
 
+            // 3. Wait for the website to process the request (Wait 8 seconds)
             await new Promise(r => setTimeout(r, 8000));
 
-            const successEmbed = new EmbedBuilder()
-                .setTitle('✅ SUCCESS')
-                .setDescription(`I have successfully submitted the UID \`${uid}\` to the website for **2 Days (48 Hours)**. Check your game!`)
-                .setColor('#00ff00');
+            // Optional: Take a screenshot to prove it worked
+            // await page.screenshot({ path: `result_${uid}.png` });
 
-            await interaction.editReply({ content: null, embeds: [successEmbed] });
+            await statusMsg.edit(`✅ **Success!** I have submitted the UID \`${uid}\` to the website. Please check the website or your game to see if it worked.`);
 
         } catch (error) {
             console.error(error);
-            const errorEmbed = new EmbedBuilder()
-                .setTitle('❌ ERROR')
-                .setDescription(`Failed to process UID \`${uid}\`. The website might be down or the layout changed.`)
-                .setColor('#ff0000');
-            await interaction.editReply({ content: null, embeds: [errorEmbed] });
+            await statusMsg.edit(`❌ **Error:** Failed to process UID \`${uid}\`. The website might be down, or the layout changed.`);
         } finally {
-            if (browser) await browser.close();
+            if (browser) {
+                await browser.close();
+            }
         }
     }
 });
